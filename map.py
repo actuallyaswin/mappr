@@ -89,7 +89,6 @@ for _dir, _, _files in os.walk(os.path.join(config['data']['folder'], config['da
             _locations = json.load(_input)['locations']
             for _i, _d in enumerate(_locations):
                 _d['iframe'] = _i
-                _d['zoom'] = float(config['map']['zoom'])
                 _d['time'] = int(_d['timestampMs']) // 1000
                 _d['lat'] = _d['latitudeE7'] / 10000000
                 _d['lon'] = _d['longitudeE7'] / 10000000
@@ -166,7 +165,7 @@ frame_status_text = ax.text(0.057, 0.14, frame_status_text_placeholder, color='b
 # Define View bounds
 logger.info('Defining View bounds...')
 lon, lat = (data[0]['lon'], data[0]['lat'])
-lonz = data[0]['zoom']
+lonz = float(config['map']['zoom'])
 latz = lonz * plth / pltw
 lonl, lonh = (bound(lon-lonz,lonmin,lonmax), bound(lon+lonz,lonmin,lonmax))
 latl, lath = (bound(lat-latz,latmin,latmax), bound(lat+latz,latmin,latmax))
@@ -200,8 +199,8 @@ map_trail = []
 # Render a frame
 def render(frame_index):
 
-    _i = bound(frame_index-frames_before,1,len(data))
-    _p = bound(frame_index-frames_before-1,0,len(data))
+    _i = bound(frame_index-frames_before,1,len(data)-1)
+    _p = bound(frame_index-frames_before-1,0,len(data)-1)
 
     # Determine meridian coordinates of this frame and the previous frame
     lon, lat = (data[_i]['lon'], data[_i]['lat'])
@@ -210,7 +209,17 @@ def render(frame_index):
     xp, yp = (data[_p]['x'], data[_p]['y'])
 
     # Adjust view bounds
-    lonz = data[_i]['zoom']
+    _z = bound(frame_index-frames_before-len(data),-1,frames_zoom)
+    if _z < 0:
+        lonz = float(config['map']['zoom'])
+    else:
+        lonz = max(float(config['map']['zoom']),1.5*lonmax*_z/frames_zoom)
+        _a = max(0,1-10*_z/frames_zoom)
+        [t.set_alpha(_a) for t in map_places]
+        [t.set_alpha(_a) for t in basemap_states]
+        [t.set_alpha(_a) for t in basemap_countries]
+        [t.set_linewidth(2-1.5*_z/frames_zoom) for t in map_trail]
+
     latz = lonz * plth / pltw
     lonl, lonh = (bound(lon-lonz,lonmin,lonmax), bound(lon+lonz,lonmin,lonmax))
     latl, lath = (bound(lat-latz,latmin,latmax), bound(lat+latz,latmin,latmax))
@@ -228,7 +237,8 @@ def render(frame_index):
 
     # Update frame text
     frame_date_text.set_text(data[_i]['date'])
-    frame_status_artist.set_data(plt.imread('icons/{}.png'.format(data[_i]['status'])))
+    frame_status_artist.set_data(plt.imread('icons/{}.png'.format(
+        data[_i]['type'] if data[_i]['type'] else data[_i]['status'])))
     frame_status_text.set_text(status(data[_i]))
 
     # Update rendering progress bar
@@ -237,13 +247,12 @@ def render(frame_index):
 
     return ax, map_trail, frame_date_text, frame_status_text, frame_status_artist
 
-
 # Compute the number of frames to animate
 frames_before = fps * int(config['render']['time_before'])
-frames_zoom =  fps * int(config['render']['time_zoom'])
+frames_zoom = fps * int(config['render']['time_zoom'])
 frames_after = fps * int(config['render']['time_after'])
 frames_total = frames_before + len(data) + frames_zoom + frames_after
-frames = range(frames_before+350,frames_before+590)
+frames = range(frames_total-61,frames_total-1)
 
 # Create and save animation
 logger.info('Rendering...')
