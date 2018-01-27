@@ -26,7 +26,7 @@ color['train'] = "#FFC107"
 nylat = 32.8080055; nylon = -117.2354315
 lonlat = 39.9042; lonlon = 116.4074
 intlat = (nylat+lonlat)/1.5; intlon = -180
-z = 1000
+z = 0.5
 x = nylon
 y = nylat
 
@@ -44,8 +44,8 @@ lath = (lath if latmin < lath < latmax else latmax)
 
 m = Basemap(projection='merc',llcrnrlat=latl,urcrnrlat=lath,\
             llcrnrlon=lonl,urcrnrlon=lonh,lat_ts=20,resolution='l',
-            epsg=4269)
-m.arcgisimage(service='ESRI_StreetMap_World_2D', xpixels = 1920, verbose= True)
+            epsg=4326)
+m.arcgisimage(service='World_Street_Map', xpixels = 1920, verbose= True)
 
 # m.drawmapboundary(fill_color=color['ocean'])
 # m.fillcontinents(color=color['grass'],lake_color=color['ocean'],alpha=0.5)
