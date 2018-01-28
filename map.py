@@ -3,6 +3,7 @@ from datetime import datetime
 from calendar import month_name
 from haversine import haversine
 from tqdm import tqdm
+import numpy as np
 import time
 import json
 import os
@@ -58,11 +59,11 @@ basemap_countries = [basemap.drawcountries()]
 
 # Define Basemap bounds
 logger.info('Defining Basemap bounds...')
-lonmin, latmin = (-180, -80)
-lonmax, latmax = (180, 80)
+lonmin, latmin = (basemap.llcrnrlon, basemap.llcrnrlat)
+lonmax, latmax = (basemap.urcrnrlon, basemap.urcrnrlat)
 bound = lambda _x,_l,_h: min(max(_x,_l),_h)
-xmin, ymin = basemap(lonmin, latmin)
-xmax, ymax = basemap(lonmax, latmax)
+xmin, ymin = (basemap.llcrnrx, basemap.llcrnry)
+xmax, ymax = (basemap.urcrnrx, basemap.urcrnry)
 ymax = min(ymax,xmax*plth/pltw)
 
 # Create a legend
@@ -71,7 +72,7 @@ import matplotlib.patches as mpatches
 legend = []
 legend.append(mpatches.Patch(color=color['drive'], label='By Car / On Foot'))
 legend.append(mpatches.Patch(color=color['train'], label='By Train'))
-legend.append(mpatches.Patch(color=color['plane'], label='By Plane'))
+legend.append(mpatches.Patch(color=color['flight'], label='By Plane'))
 plt.legend(handles=legend, loc="lower right", fontsize=plth//40)
 
 # Import place data
@@ -88,7 +89,6 @@ for _dir, _, _files in os.walk(os.path.join(config['data']['folder'], config['da
         with open(os.path.join(_dir, _file), 'r') as _input:
             _locations = json.load(_input)['locations']
             for _i, _d in enumerate(_locations):
-                _d['iframe'] = _i
                 _d['time'] = int(_d['timestampMs']) // 1000
                 _d['lat'] = _d['latitudeE7'] / 10000000
                 _d['lon'] = _d['longitudeE7'] / 10000000
@@ -99,7 +99,7 @@ for _dir, _, _files in os.walk(os.path.join(config['data']['folder'], config['da
                 _coordinate = (_d['lat'], _d['lon'])
                 _nearest = min(data_places, key=lambda _x:
                                haversine((_x['lat'], _x['lon']), _coordinate, miles=True))
-                if haversine((_nearest['lat'], _nearest['lon']), _coordinate, miles=True) < 20:
+                if haversine((_nearest['lat'], _nearest['lon']), _coordinate, miles=True) < _nearest['radius']:
                     _d['place'] = _nearest['name']
                     _d['type'] = _nearest['type']
                 else:
@@ -131,36 +131,73 @@ if config['processing'].getboolean('scrub'):
                 _hist_scrub[_last] = _hist_scrub.get(_last, 0) + 1
                 del data[_i]
         _i += 1
-    # logger.info('Scrubbed '+''.join(['{} frames from {}{}'.format(
-    #             _hist_scrub[_k],_k,((', ' if _i < len(_hist_scrub) - 2 else ', and ')
-    #             if _i < len(_hist_scrub) - 1 else '.')
-    #             ) for _i, _k in enumerate(_hist_scrub)]))
+    logger.info('Scrubbed '+''.join(['{} frames from {}{}'.format(
+                _hist_scrub[_k],_k,((', ' if _i < len(_hist_scrub) - 2 else ', and ')
+                if _i < len(_hist_scrub) - 1 else '.')
+                ) for _i, _k in enumerate(_hist_scrub)]))
     logger.info('Frames after scrubbing = {}'.format(len(data)))
+
+# Interpolate data for flights or train rides
+frames_interpolated = 0
+if config['processing'].getboolean('interpolate'):
+    _i = 0
+    while _i < len(data)-1:
+        if not data[_i]['interpolated']:
+            _d = data[_i]
+            _n = data[_i+1]
+            _s = None
+            distance = haversine((_d['lat'], _d['lon']), (_n['lat'], _n['lon']), miles=True)
+            if distance > 500:
+                _s = "flight"
+            elif (distance > 50) and (_d['lon'] > 0):
+                _s = "train"
+            if _s:
+                logger.info('Interpolating data for {} from {} to {}...'.format(
+                    _s, _d['place'], _n['place']))
+                _l, = basemap.drawgreatcircle(_d['lon'], _d['lat'], _n['lon'], _n['lat'])
+                _x, _y = _l.get_data(); _l.remove(); del _l
+                for _j in reversed(range(len(_x))):
+                    _v = {}
+                    _v['status'] = _s
+                    _v['time'] = _n['time']
+                    _date = datetime.fromtimestamp(_v['time'])
+                    _v['date'] = '{} {}, {}'.format(
+                        month_name[_date.month], _date.day, _date.year)
+                    _v['interpolated'] = True
+                    _v['place'] = None
+                    _v['type'] = None
+                    _v['x'], _v['y'] = (_x[_j], _y[_j])
+                    _v['lon'], _v['lat'] = basemap(_x[_j], _y[_j], inverse=True)
+                    data.insert(_i+1, _v)
+                frames_interpolated += len(_x)
+        _i += 1
+    logger.info('Frames after interpolating = {}'.format(len(data)))
 
 # Initialize frame text
 def status(_d):
     if _d['place']:
-        return _d['place']
+        return _d['place'].replace('\n',' ')
     else:
         if _d['status'] == "drive":
             return "Driving..."
         if _d['status'] == "train":
             return "Riding the train..."
-        if _d['status'] == "plane":
+        if _d['status'] == "flight":
             return "Flying..."
-
-logger.info('Initializing frame text...')
-frame_date_image = plt.imread('icons/calendar.png')
-frame_status_image = plt.imread('icons/{}.png'.format(data[0]['status']))
-frame_date_artist = ax.imshow(frame_date_image, alpha=1, aspect='equal',
-                            extent=[0.02, .08*plth/pltw, 0.06, .11],
-                            zorder=3, transform=ax.transAxes)
-frame_status_artist = ax.imshow(frame_status_image, alpha=1, aspect='equal',
-                            extent=[0.02, .08*plth/pltw, 0.13, .18],
-                            zorder=3, transform=ax.transAxes)
-frame_date_text = ax.text(0.057, 0.07, data[0]['date'], color='black', fontsize=plth//40, transform=ax.transAxes)
-frame_status_text_placeholder = status(data[0])
-frame_status_text = ax.text(0.057, 0.14, frame_status_text_placeholder, color='black', fontsize=plth//40, transform=ax.transAxes)
+if config['render'].getboolean('show_date') or config['render'].getboolean('show_status'):
+    logger.info('Initializing frame text...')
+if config['render'].getboolean('show_date'):
+    frame_date_image = plt.imread('icons/calendar.png')
+    frame_date_artist = ax.imshow(frame_date_image, alpha=1, aspect='equal',
+                                extent=[0.02, .08*plth/pltw, 0.06, .11],
+                                zorder=3, transform=ax.transAxes)
+    frame_date_text = ax.text(0.057, 0.07, '', color='black', fontsize=plth//40, transform=ax.transAxes)
+if config['render'].getboolean('show_status'):
+    frame_status_image = plt.imread('icons/{}.png'.format(data[0]['status']))
+    frame_status_artist = ax.imshow(frame_status_image, alpha=1, aspect='equal',
+                                extent=[0.02, .08*plth/pltw, 0.13, .18],
+                                zorder=3, transform=ax.transAxes)
+    frame_status_text = ax.text(0.057, 0.14, '', color='black', fontsize=plth//40, transform=ax.transAxes)
 
 # Define View bounds
 logger.info('Defining View bounds...')
@@ -192,6 +229,10 @@ for i, c in enumerate(data_places):
         horizontalalignment='right',
         multialignment='center',
         color="black",alpha=1,fontsize=plth//50))
+
+# Export data
+with open(os.path.join(config['data']['folder'], config['data']['year'] + '.json'), 'w') as fp:
+    json.dump(data, fp, indent=4)
 
 # Array for trail
 map_trail = []
@@ -232,14 +273,21 @@ def render(frame_index):
     ax.set_xlim([xl, xh])
     ax.set_ylim([yl, yh])
 
+    # If looping around, disconnect the previous trail point
+    if (abs(x-xp) > (xmax-xmin)//2) or (abs(y-yp) > (ymax-ymin)//2):
+        xp = x; yp = y;
+
     # Draw a trail from the previous point to the current point
     map_trail.append(basemap.plot([x, xp], [y, yp], color=color[data[_i]['status']], linewidth=2)[0])
 
     # Update frame text
-    frame_date_text.set_text(data[_i]['date'])
-    frame_status_artist.set_data(plt.imread('icons/{}.png'.format(
-        data[_i]['type'] if data[_i]['type'] else data[_i]['status'])))
-    frame_status_text.set_text(status(data[_i]))
+    if config['render'].getboolean('show_date'):
+        frame_date_text.set_text(data[_i]['date'])
+
+    if config['render'].getboolean('show_status'):
+        frame_status_artist.set_data(plt.imread('icons/{}.png'.format(
+            data[_i]['type'] if data[_i]['type'] else data[_i]['status'])))
+        frame_status_text.set_text(status(data[_i]))
 
     # Update rendering progress bar
     global pbar
@@ -252,10 +300,14 @@ frames_before = fps * int(config['render']['time_before'])
 frames_zoom = fps * int(config['render']['time_zoom'])
 frames_after = fps * int(config['render']['time_after'])
 frames_total = frames_before + len(data) + frames_zoom + frames_after
-frames = range(frames_total-61,frames_total-1)
+frames = range(1, frames_total)
 
 # Create and save animation
-logger.info('Rendering...')
+logger.info('Rendering from {} ({}) to {} ({})...'.format(
+    data[max(min(frames)-frames_before,0)]['date'],
+    status(data[max(min(frames)-frames_before,0)]),
+    data[min(max(frames)-frames_after-frames_zoom-frames_before,len(data))]['date'],
+    status(data[min(max(frames)-frames_after-frames_zoom-frames_before,len(data))])))
 pbar = tqdm(total=len(frames),unit='frames')
 import matplotlib.animation as animation
 anim = animation.FuncAnimation(fig, render, frames=frames)
