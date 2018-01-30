@@ -1,6 +1,8 @@
 [
     {
         "name": "New York",
+        "type": "city",
+        "radius": 48.47,
         "lat": 40.7127837,
         "lon": -74.0059413
     }
