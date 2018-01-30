@@ -1,0 +1,5 @@
+numpy==1.13.3
+haversine==0.4.5
+tqdm==4.19.5
+basemap==1.0.7
+matplotlib==2.0.2

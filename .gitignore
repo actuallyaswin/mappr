@@ -1,7 +1,7 @@
 *.mp4
-*.png
 *.ipynb_checkpoints
 *.json
 */*.json
 */*/*
 !data/sample_places.json
+!data/2018/sample_data.json
