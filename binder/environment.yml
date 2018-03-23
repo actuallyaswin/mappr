@@ -1,0 +1,14 @@
+name: mappr
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.6
+  - numpy>=1.13.3
+  - scipy>=1.0.0
+  - haversine>=0.4.5
+  - pyproj>=1.9.5
+  - basemap>=1.0.7
+  - matplotlib>=2.0.2
+  - pip:
+    - tqdm>=4.19.5
