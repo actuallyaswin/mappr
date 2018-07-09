@@ -1,5 +1,7 @@
 # Mappr
 
+[![Binder](https://mybinder.org/badge.svg)](https://mybinder.org/v2/gh/kmader/mappr/master)
+
 A Python script to render a video of a marker moving on a map showing where you've been, using [your Google location history](https://maps.google.com/locationhistory "Google Timeline").
 
 ## Getting Started
