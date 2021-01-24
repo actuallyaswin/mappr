@@ -125,8 +125,8 @@ if __name__ == '__main__':
                         month_name[_date.month], _date.day, _date.year)
                     _coordinate = (_d['lat'], _d['lon'])
                     _nearest = min(data_places, key=lambda _x:
-                                   haversine((_x['lat'], _x['lon']), _coordinate, miles=True))
-                    if haversine((_nearest['lat'], _nearest['lon']), _coordinate, miles=True) < _nearest['radius']:
+                                   haversine((_x['lat'], _x['lon']), _coordinate, unit='mi'))
+                    if haversine((_nearest['lat'], _nearest['lon']), _coordinate, unit='mi') < _nearest['radius']:
                         _d['place'] = _nearest['name']
                         _d['type'] = _nearest['type']
                     else:
@@ -173,7 +173,7 @@ if __name__ == '__main__':
                 _d = data[_i]
                 _n = data[_i+1]
                 _s = None
-                distance = haversine((_d['lat'], _d['lon']), (_n['lat'], _n['lon']), miles=True)
+                distance = haversine((_d['lat'], _d['lon']), (_n['lat'], _n['lon']), unit='mi')
                 if distance > 500:
                     _s = "flight"
                 elif (distance > 50) and (_d['lon'] > 0):
